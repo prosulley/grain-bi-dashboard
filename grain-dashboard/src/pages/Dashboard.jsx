@@ -33,7 +33,7 @@ export default function Dashboard() {
       api.get('/dashboard/profit-by-grain'),
     ]).then(([ov, tr, pr]) => {
       setData(ov.data.data)
-      setTrend(tr.data.data.map(d => ({ ...d, revenue: Number(d.revenue) })))
+      setTrend(tr.data.data.map(d => ({ ...d, date: (d.date || '').slice(0, 10), revenue: Number(d.revenue) })))
       setProfit(pr.data.data.map(d => ({
         grain: d.grain,
         cost:  Number(d.total_buy_cost),
