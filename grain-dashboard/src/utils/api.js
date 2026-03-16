@@ -1,9 +1,11 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+const BASE_URL = import.meta.env.PROD
+  ? 'https://grain-bi-dashboard-587389680762.europe-west1.run.app/api'
+  : '/api'
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -13,9 +15,7 @@ if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 api.interceptors.response.use(
   r => r,
   err => {
-    // Don't redirect on 401 for login/setup endpoints — let the page handle the error
-    const isAuthRoute = err.config?.url?.includes('/auth/login') || err.config?.url?.includes('/auth/setup')
-    if (err.response?.status === 401 && !isAuthRoute) {
+    if (err.response?.status === 401) {
       localStorage.removeItem('grain_token')
       window.location.href = '/login'
     }
