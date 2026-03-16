@@ -19,7 +19,13 @@ export default function Login() {
       await login(form.email, form.password)
       navigate('/')
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Check your credentials.')
+      if (err.response?.data?.message) {
+        setError(err.response.data.message)
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        setError('Cannot reach the server. The API may be offline or the URL is misconfigured.')
+      } else {
+        setError('Login failed. Check your credentials.')
+      }
     } finally {
       setLoading(false)
     }

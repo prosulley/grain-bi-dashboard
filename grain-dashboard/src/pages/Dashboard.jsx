@@ -101,7 +101,7 @@ export default function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#28301b" />
-                <XAxis dataKey="date" stroke="#4a5935" tick={{ fontSize: 11 }} tickFormatter={d => d?.slice(5)} />
+                <XAxis dataKey="date" stroke="#4a5935" tick={{ fontSize: 11 }} tickFormatter={d => d ? new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short' }) : ''} />
                 <YAxis stroke="#4a5935" tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
                 <Tooltip {...TOOLTIP_STYLE} formatter={v => [fmt.currency(v), 'Revenue']} />
                 <Area type="monotone" dataKey="revenue" stroke="#d4852a" strokeWidth={2} fill="url(#rev)" />

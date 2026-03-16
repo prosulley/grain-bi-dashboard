@@ -19,6 +19,8 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors({
   origin: [
+    'https://grain-biz-dashboard.web.app',
+    'https://grain-biz-dashboard.firebaseapp.com',
     'https://grain-biz-dashboard-122ac.web.app',
     'https://grain-biz-dashboard-122ac.firebaseapp.com',
     'http://localhost:3000'
