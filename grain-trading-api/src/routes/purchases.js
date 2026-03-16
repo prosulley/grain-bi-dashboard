@@ -108,6 +108,106 @@ router.post('/', protect, async (req, res, next) => {
   }
 });
 
+// ─── PUT /api/purchases/:id ────────────────────────────────────────────────
+router.put('/:id', protect, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { supplier_id, warehouse_id, purchase_date, expected_date, notes, items } = req.body;
+    const purchaseId = req.params.id;
+
+    // Check purchase exists
+    const existing = await client.query('SELECT * FROM purchases WHERE id = $1', [purchaseId]);
+    if (!existing.rows[0])
+      return res.status(404).json({ success: false, message: 'Purchase not found.' });
+
+    // Don't allow editing completed purchases
+    if (existing.rows[0].status === 'completed')
+      return res.status(400).json({ success: false, message: 'Cannot edit a completed purchase.' });
+
+    // Update purchase header
+    await client.query(
+      `UPDATE purchases SET
+         supplier_id   = COALESCE($1, supplier_id),
+         warehouse_id  = COALESCE($2, warehouse_id),
+         purchase_date = COALESCE($3, purchase_date),
+         expected_date = $4,
+         notes         = $5,
+         updated_at    = NOW()
+       WHERE id = $6`,
+      [supplier_id, warehouse_id, purchase_date, expected_date || null, notes || null, purchaseId]
+    );
+
+    // If items are provided, replace them
+    if (items && items.length) {
+      // Remove old items (CASCADE will handle it)
+      await client.query('DELETE FROM purchase_items WHERE purchase_id = $1', [purchaseId]);
+
+      // Insert new items
+      for (const item of items) {
+        const { grain_id, quantity, unit, price_per_kg, quality_grade, notes: itemNotes } = item;
+        const qty_kg = toKg(quantity, unit || 'kg');
+
+        await client.query(
+          `INSERT INTO purchase_items (purchase_id, grain_id, quantity, unit, quantity_kg, price_per_kg, quality_grade, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [purchaseId, grain_id, quantity, unit || 'kg', qty_kg, price_per_kg, quality_grade || null, itemNotes || null]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    const full = await pool.query('SELECT * FROM vw_purchases_summary WHERE id = $1', [purchaseId]);
+    res.json({ success: true, data: full.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── DELETE /api/purchases/:id ────────────────────────────────────────────────
+router.delete('/:id', protect, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const purchaseId = req.params.id;
+
+    // Check purchase exists
+    const existing = await client.query('SELECT * FROM purchases WHERE id = $1', [purchaseId]);
+    if (!existing.rows[0])
+      return res.status(404).json({ success: false, message: 'Purchase not found.' });
+
+    // Don't allow deleting purchases with payments
+    if (parseFloat(existing.rows[0].amount_paid) > 0)
+      return res.status(400).json({ success: false, message: 'Cannot delete a purchase that has payments recorded.' });
+
+    // Delete payments linked to this purchase (if any)
+    await client.query(
+      `DELETE FROM payments WHERE transaction_id = $1 AND direction = 'outflow'`,
+      [purchaseId]
+    );
+
+    // Delete purchase items (cascade should handle, but explicit for safety)
+    await client.query('DELETE FROM purchase_items WHERE purchase_id = $1', [purchaseId]);
+
+    // Delete purchase
+    await client.query('DELETE FROM purchases WHERE id = $1', [purchaseId]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Purchase deleted.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // ─── PUT /api/purchases/:id/status ───────────────────────────────────────────
 router.put('/:id/status', protect, async (req, res, next) => {
   try {

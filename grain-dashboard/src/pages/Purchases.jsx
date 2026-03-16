@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ShoppingCart, Plus, Trash2, CreditCard } from 'lucide-react'
+import { ShoppingCart, Plus, Trash2, CreditCard, Pencil } from 'lucide-react'
 import api from '../utils/api'
 import { fmt } from '../utils/format'
 import { PageHeader, Table, Modal, FormField, Select, EmptyState, ExportButton } from '../components/ui'
@@ -17,6 +17,8 @@ export default function Purchases() {
   const [saving,     setSaving]     = useState(false)
   const [error,      setError]      = useState('')
   const [payForm,    setPayForm]    = useState({ amount: '', method: 'cash', notes: '' })
+  const [editing,    setEditing]    = useState(null)
+  const [confirmDel, setConfirmDel] = useState(null)
 
   const [form, setForm] = useState({
     supplier_id: '', warehouse_id: '', purchase_date: new Date().toISOString().slice(0,10), notes: '',
@@ -41,6 +43,58 @@ export default function Purchases() {
   const setItem = (i, k, v) => setForm(p => {
     const items = [...p.items]; items[i] = { ...items[i], [k]: v }; return { ...p, items }
   })
+
+  const defaultForm = () => ({
+    supplier_id: '', warehouse_id: '', purchase_date: new Date().toISOString().slice(0,10), notes: '',
+    tt_fee: '', misc_fee: '',
+    items: [{ grain_id: '', quantity: '', unit: 'bags', price_per_bag: '', quality_grade: '' }]
+  })
+
+  const openAdd = () => {
+    setEditing(null)
+    setForm(defaultForm())
+    setError('')
+    setModal(true)
+  }
+
+  const openEdit = async (row) => {
+    setEditing(row.id)
+    setError('')
+    try {
+      const res = await api.get(`/purchases/${row.id}`)
+      const p = res.data.data
+      setForm({
+        supplier_id: p.supplier_id || '',
+        warehouse_id: p.warehouse_id || '',
+        purchase_date: (p.purchase_date || '').slice(0, 10),
+        notes: p.notes || '',
+        tt_fee: '',
+        misc_fee: '',
+        items: (p.items || []).map(it => ({
+          grain_id: it.grain_id,
+          quantity: it.quantity,
+          unit: it.unit || 'bags',
+          price_per_bag: parseFloat(it.price_per_kg || 0) * (unitToKg[it.unit] || 1),
+          quality_grade: it.quality_grade || '',
+        }))
+      })
+      setModal(true)
+    } catch {
+      setError('Failed to load purchase details')
+    }
+  }
+
+  const deletePurchase = async () => {
+    if (!confirmDel) return
+    try {
+      await api.delete(`/purchases/${confirmDel.id}`)
+      setConfirmDel(null)
+      load()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete purchase')
+      setConfirmDel(null)
+    }
+  }
 
   // Unit multiplier: how many kg per unit (used for backend conversion)
   const unitToKg = { kg:1, tonnes:1000, bags:50, crates:25 }
@@ -69,7 +123,8 @@ export default function Purchases() {
           quality_grade: it.quality_grade,
         }))
       }
-      await api.post('/purchases', payload)
+      if (editing) await api.put(`/purchases/${editing}`, payload)
+      else         await api.post('/purchases', payload)
       setModal(false)
       load()
     } catch(err) {
@@ -95,9 +150,23 @@ export default function Purchases() {
     { key: 'total_amount',  label: 'Total',     render: v => <span className="font-mono">{fmt.currency(v)}</span> },
     { key: 'balance_due',   label: 'Balance',   render: v => <span className={`font-mono ${Number(v)>0?'text-red-400':'text-grain-500'}`}>{fmt.currency(v)}</span> },
     { key: 'status', label: 'Status', render: v => { const s=fmt.status(v); return <span className={s.cls}>{s.label}</span> }},
-    { key: 'id', label: '', render: (_, r) => Number(r.balance_due)>0 && (
-      <button onClick={() => { setSelPurch(r); setPayForm({ amount: r.balance_due, method:'cash', notes:'' }); setPayModal(true) }}
-        className="btn-ghost text-xs flex items-center gap-1"><CreditCard size={12}/>Pay</button>
+    { key: 'id', label: '', render: (_, r) => (
+      <div className="flex items-center gap-1">
+        {Number(r.balance_due) > 0 && (
+          <button onClick={() => { setSelPurch(r); setPayForm({ amount: r.balance_due, method:'cash', notes:'' }); setPayModal(true) }}
+            className="btn-ghost text-xs flex items-center gap-1"><CreditCard size={12}/>Pay</button>
+        )}
+        {r.status !== 'completed' && (
+          <button onClick={() => openEdit(r)} className="btn-ghost text-xs flex items-center gap-1">
+            <Pencil size={12}/>Edit
+          </button>
+        )}
+        {Number(r.amount_paid || 0) === 0 && (
+          <button onClick={() => setConfirmDel(r)} className="btn-ghost text-xs flex items-center gap-1 text-red-400 hover:text-red-300">
+            <Trash2 size={12}/>Delete
+          </button>
+        )}
+      </div>
     )},
   ]
 
@@ -122,7 +191,7 @@ export default function Purchases() {
         action={
           <div className="flex items-center gap-2">
             <ExportButton onClick={handleExport} disabled={!rows.length} />
-            <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2"><Plus size={15}/>New Purchase</button>
+            <button onClick={openAdd} className="btn-primary flex items-center gap-2"><Plus size={15}/>New Purchase</button>
           </div>
         }
       />
@@ -133,8 +202,8 @@ export default function Purchases() {
         />
       </div>
 
-      {/* New Purchase Modal */}
-      <Modal open={modal} onClose={() => setModal(false)} title="New Purchase" size="xl">
+      {/* New / Edit Purchase Modal */}
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Purchase' : 'New Purchase'} size="xl">
         <form onSubmit={submit} className="space-y-5">
           {error && <div className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-red-400 text-sm">{error}</div>}
 
@@ -240,7 +309,7 @@ export default function Purchases() {
 
           <div className="flex gap-3">
             <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? 'Saving...' : 'Create Purchase'}
+              {saving ? 'Saving...' : editing ? 'Update Purchase' : 'Create Purchase'}
             </button>
             <button type="button" onClick={() => setModal(false)} className="btn-secondary">Cancel</button>
           </div>
@@ -280,6 +349,24 @@ export default function Purchases() {
             <button type="button" onClick={() => setPayModal(false)} className="btn-secondary">Cancel</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Purchase">
+        <div className="space-y-4">
+          <p className="text-grain-300 text-sm">
+            Are you sure you want to delete purchase <span className="font-mono text-earth-300">{confirmDel?.reference}</span>?
+            This action cannot be undone.
+          </p>
+          <div className="p-3 bg-red-950/40 border border-red-900 rounded-xl text-red-400 text-sm flex items-center gap-2">
+            <Trash2 size={14} />
+            All line items associated with this purchase will also be deleted.
+          </div>
+          <div className="flex gap-3">
+            <button onClick={deletePurchase} className="btn-primary flex-1 !bg-red-600 hover:!bg-red-500">Delete Purchase</button>
+            <button onClick={() => setConfirmDel(null)} className="btn-secondary">Cancel</button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
