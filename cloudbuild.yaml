@@ -1,0 +1,16 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/grain-trading-api:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/grain-trading-api:latest'
+      - '-f'
+      - 'grain-trading-api/Dockerfile'
+      - 'grain-trading-api'
+
+images:
+  - 'gcr.io/$PROJECT_ID/grain-trading-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/grain-trading-api:latest'
+
