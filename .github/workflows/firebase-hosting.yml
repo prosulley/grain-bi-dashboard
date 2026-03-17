@@ -1,17 +1,23 @@
-name: Deploy to Google Cloud
+name: Build and Deploy to GCP
 
 on:
   push:
     branches:
       - master
-  workflow_dispatch: # This allows you to click a button to run it manually
+  workflow_dispatch:
 
 permissions:
   contents: 'read'
   id-token: 'write'
 
+env:
+  PROJECT_ID: 'grain-biz-dashboard'
+  REGION: 'us-central1' # Change to your preferred region
+  REPOSITORY: 'grain-repo' # The name of your Artifact Registry repo
+  IMAGE: 'grain-dashboard-ui'
+
 jobs:
-  auth-test:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,5 +33,11 @@ jobs:
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
 
-      - name: 'Verify Login'
-        run: 'gcloud auth list'
+      - name: 'Docker Auth'
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: 'Build and Push Container'
+        run: |
+          docker build -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}" .
+          docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}"
