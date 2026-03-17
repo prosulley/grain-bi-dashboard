@@ -12,9 +12,10 @@ permissions:
 
 env:
   PROJECT_ID: 'grain-biz-dashboard'
-  REGION: 'us-central1' # Change to your preferred region
-  REPOSITORY: 'grain-repo' # The name of your Artifact Registry repo
-  IMAGE: 'grain-dashboard-ui'
+  REGION: 'us-central1'
+  REPOSITORY: 'grain-repo'
+  IMAGE: 'grainbiz-api'
+  SERVICE: 'grainbiz-api'
 
 jobs:
   deploy:
@@ -37,7 +38,47 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: 'Build and Push Container'
+      # ── API: Build & Push ──
+      - name: 'Build and Push API Container'
         run: |
-          docker build -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}" .
+          docker build \
+            -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}" \
+            -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest" \
+            -f grain-trading-api/Dockerfile \
+            grain-trading-api
           docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}"
+          docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest"
+
+      # ── API: Deploy to Cloud Run ──
+      - name: 'Deploy API to Cloud Run'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}'
+          flags: '--allow-unauthenticated'
+          env_vars: |
+            NODE_ENV=production
+          secrets: |
+            DB_HOST=DB_HOST:latest
+            DB_NAME=DB_NAME:latest
+            DB_USER=DB_USER:latest
+            DB_PASSWORD=DB_PASSWORD:latest
+            JWT_SECRET=JWT_SECRET:latest
+            CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest
+
+      # ── Frontend: Build ──
+      - name: 'Install & Build Frontend'
+        working-directory: grain-dashboard
+        run: |
+          npm ci
+          npm run build
+
+      # ── Frontend: Deploy to Firebase Hosting ──
+      - name: 'Deploy to Firebase Hosting'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: live
+          projectId: grain-biz-dashboard-122ac
