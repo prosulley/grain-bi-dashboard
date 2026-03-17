@@ -1,4 +1,5 @@
 steps:
+  # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -9,6 +10,32 @@ steps:
       - '-f'
       - 'grain-trading-api/Dockerfile'
       - 'grain-trading-api'
+
+  # Push the image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/grain-trading-api:$COMMIT_SHA']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'grain-trading-api'
+      - '--image=gcr.io/$PROJECT_ID/grain-trading-api:$COMMIT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--add-cloudsql-instances=${_CLOUD_SQL_CONNECTION_NAME}'
+      - '--set-env-vars=NODE_ENV=production,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},DB_NAME=${_DB_NAME},DB_USER=${_DB_USER},DB_PASSWORD=${_DB_PASSWORD},JWT_SECRET=${_JWT_SECRET},JWT_EXPIRES_IN=7d'
+
+substitutions:
+  _REGION: us-central1
+  _CLOUD_SQL_CONNECTION_NAME: ''
+  _DB_NAME: grain_trading_db
+  _DB_USER: grain_admin
+  _DB_PASSWORD: ''
+  _JWT_SECRET: ''
 
 images:
   - 'gcr.io/$PROJECT_ID/grain-trading-api:$COMMIT_SHA'
