@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Warehouse, Plus, Package } from 'lucide-react'
+import { Warehouse, Plus, Package, Trash2 } from 'lucide-react'
 import api from '../utils/api'
 import { fmt } from '../utils/format'
 import { PageHeader, Modal, FormField, EmptyState, Spinner, ExportButton } from '../components/ui'
@@ -35,6 +35,17 @@ export default function Warehouses() {
       else         await api.post('/warehouses', form)
       setModal(false); load()
     } finally { setSaving(false) }
+  }
+
+  const handleDelete = async (row) => {
+    if (!confirm(`Delete warehouse "${row.name}"? This cannot be undone.`)) return
+    try {
+      await api.delete(`/warehouses/${row.id}`)
+      setDetail(null)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete warehouse')
+    }
   }
 
   const f = v => setForm(p => ({ ...p, ...v }))
@@ -92,6 +103,7 @@ export default function Warehouses() {
                     </div>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); openEdit(row) }} className="btn-ghost text-xs">Edit</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(row) }} className="btn-ghost text-xs text-red-400 hover:text-red-300 flex items-center gap-1"><Trash2 size={12}/>Delete</button>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 mb-4">

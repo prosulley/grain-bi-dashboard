@@ -76,4 +76,32 @@ router.put('/:id', protect, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── DELETE /api/warehouses/:id (soft-delete) ─────────────────────────────────
+router.delete('/:id', protect, async (req, res, next) => {
+  try {
+    // Prevent deletion if warehouse still holds stock
+    const stock = await pool.query(
+      `SELECT COALESCE(SUM(quantity_kg), 0) AS total_stock
+       FROM inventory WHERE warehouse_id = $1`,
+      [req.params.id]
+    );
+    if (parseFloat(stock.rows[0].total_stock) > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete a warehouse that still has stock. Move or clear inventory first.',
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE warehouses SET is_active = FALSE, updated_at = NOW()
+       WHERE id = $1 AND is_active = TRUE RETURNING *`,
+      [req.params.id]
+    );
+    if (!result.rows[0])
+      return res.status(404).json({ success: false, message: 'Warehouse not found.' });
+
+    res.json({ success: true, message: 'Warehouse deleted.', data: result.rows[0] });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
