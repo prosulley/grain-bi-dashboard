@@ -3,7 +3,8 @@ name: Deploy to Google Cloud
 on:
   push:
     branches:
-      - main
+      - master
+  workflow_dispatch: # This allows you to click a button to run it manually
 
 permissions:
   contents: 'read'
