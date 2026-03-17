@@ -1,8 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.PROD
-  ? 'https://grainbiz-api-587389680762.us-central1.run.app/api'
-  : '/api'
+const BASE_URL = '/api'
 
 const api = axios.create({
   baseURL: BASE_URL,
