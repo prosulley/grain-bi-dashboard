@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { UserCheck, Plus, Search, Phone, MapPin } from 'lucide-react'
+import { UserCheck, Plus, Search, Phone, MapPin, Trash2 } from 'lucide-react'
 import api from '../utils/api'
 import { PageHeader, Table, Modal, FormField, EmptyState, Spinner, ExportButton } from '../components/ui'
 import { exportToExcel } from '../utils/exportExcel'
@@ -43,6 +43,16 @@ export default function Suppliers() {
 
   const f = v => setForm(p => ({ ...p, ...v }))
 
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Are you sure you want to delete supplier "${row.full_name}"?`)) return
+    try {
+      await api.delete(`/suppliers/${row.id}`)
+      load(search)
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete supplier')
+    }
+  }
+
   const columns = [
     { key: 'code',         label: 'Code',     className: 'w-24' },
     { key: 'full_name',    label: 'Name',     render: (v, r) => (
@@ -59,7 +69,12 @@ export default function Suppliers() {
     ) : '—' },
     { key: 'rating', label: 'Rating', render: v => v ? '⭐'.repeat(v) : '—' },
     { key: 'id', label: '', render: (_, r) => (
-      <button onClick={() => openEdit(r)} className="btn-ghost text-xs">Edit</button>
+      <div className="flex items-center gap-1">
+        <button onClick={() => openEdit(r)} className="btn-ghost text-xs">Edit</button>
+        <button onClick={() => handleDelete(r)} className="btn-ghost text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+          <Trash2 size={12}/>Delete
+        </button>
+      </div>
     )},
   ]
 

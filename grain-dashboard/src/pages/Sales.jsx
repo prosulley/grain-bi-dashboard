@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { TrendingUp, Plus, Trash2, CreditCard } from 'lucide-react'
+import { TrendingUp, Plus, Trash2, CreditCard, Pencil } from 'lucide-react'
 import api from '../utils/api'
 import { fmt } from '../utils/format'
 import { PageHeader, Table, Modal, FormField, Select, EmptyState, ExportButton } from '../components/ui'
@@ -16,6 +16,7 @@ export default function Sales() {
   const [grains,     setGrains]     = useState([])
   const [saving,     setSaving]     = useState(false)
   const [error,      setError]      = useState('')
+  const [editing,    setEditing]    = useState(null)
   const [payForm,    setPayForm]    = useState({ amount: '', method: 'cash', notes: '' })
 
   const [form, setForm] = useState({
@@ -43,6 +44,46 @@ export default function Sales() {
     const items = [...p.items]; items[i] = { ...items[i], [k]: v }; return { ...p, items }
   })
 
+  const defaultForm = {
+    buyer_id: '', warehouse_id: '', sale_date: new Date().toISOString().slice(0,10),
+    delivery_date: '', notes: '',
+    tt_fee: '', misc_fee: '',
+    items: [{ grain_id: '', quantity: '', unit: 'bags', price_per_bag: '' }]
+  }
+
+  const openAdd = () => {
+    setEditing(null)
+    setForm(defaultForm)
+    setError('')
+    setModal(true)
+  }
+
+  const openEdit = (row) => {
+    setEditing(row.id)
+    setForm({
+      buyer_id: row.buyer_id || '',
+      warehouse_id: row.warehouse_id || '',
+      sale_date: row.sale_date ? row.sale_date.slice(0, 10) : '',
+      delivery_date: row.delivery_date ? row.delivery_date.slice(0, 10) : '',
+      notes: row.notes || '',
+      tt_fee: row.tt_fee || '',
+      misc_fee: row.misc_fee || '',
+      items: [{ grain_id: '', quantity: '', unit: 'bags', price_per_bag: '' }]
+    })
+    setError('')
+    setModal(true)
+  }
+
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Are you sure you want to delete sale "${row.reference}"? This action cannot be undone.`)) return
+    try {
+      await api.delete(`/sales/${row.id}`)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete sale')
+    }
+  }
+
   // Unit multiplier: how many kg per unit (used for backend conversion)
   const unitToKg = { kg:1, tonnes:1000, bags:50, crates:25 }
 
@@ -59,21 +100,34 @@ export default function Sales() {
     e.preventDefault()
     setSaving(true); setError('')
     try {
-      // Convert price_per_bag to price_per_kg for the backend
-      const payload = {
-        ...form,
-        items: form.items.map(it => ({
-          grain_id: it.grain_id,
-          quantity: it.quantity,
-          unit: it.unit,
-          price_per_kg: parseFloat(it.price_per_bag || 0) / (unitToKg[it.unit] || 1),
-        }))
+      if (editing) {
+        // Update sale header only
+        await api.put(`/sales/${editing}`, {
+          buyer_id: form.buyer_id,
+          warehouse_id: form.warehouse_id,
+          sale_date: form.sale_date,
+          delivery_date: form.delivery_date,
+          notes: form.notes,
+          tt_fee: form.tt_fee,
+          misc_fee: form.misc_fee,
+        })
+      } else {
+        // Convert price_per_bag to price_per_kg for the backend
+        const payload = {
+          ...form,
+          items: form.items.map(it => ({
+            grain_id: it.grain_id,
+            quantity: it.quantity,
+            unit: it.unit,
+            price_per_kg: parseFloat(it.price_per_bag || 0) / (unitToKg[it.unit] || 1),
+          }))
+        }
+        await api.post('/sales', payload)
       }
-      await api.post('/sales', payload)
       setModal(false)
       load()
     } catch(err) {
-      setError(err.response?.data?.message || 'Failed to create sale')
+      setError(err.response?.data?.message || (editing ? 'Failed to update sale' : 'Failed to create sale'))
     } finally { setSaving(false) }
   }
 
@@ -105,10 +159,20 @@ export default function Sales() {
       <span className={`font-mono ${Number(v)>0 ? 'text-red-400' : 'text-grain-500'}`}>{fmt.currency(v)}</span>
     )},
     { key: 'status', label: 'Status', render: v => { const s=fmt.status(v); return <span className={s.cls}>{s.label}</span> }},
-    { key: 'id', label: '', render: (_, r) => Number(r.balance_due) > 0 && (
-      <button onClick={() => openPay(r)} className="btn-ghost text-xs flex items-center gap-1">
-        <CreditCard size={12}/>Pay
-      </button>
+    { key: 'id', label: '', render: (_, r) => (
+      <div className="flex items-center gap-1">
+        {Number(r.balance_due) > 0 && (
+          <button onClick={() => openPay(r)} className="btn-ghost text-xs flex items-center gap-1">
+            <CreditCard size={12}/>Pay
+          </button>
+        )}
+        <button onClick={() => openEdit(r)} className="btn-ghost text-xs flex items-center gap-1">
+          <Pencil size={12}/>Edit
+        </button>
+        <button onClick={() => handleDelete(r)} className="btn-ghost text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+          <Trash2 size={12}/>Delete
+        </button>
+      </div>
     )},
   ]
 
@@ -132,7 +196,7 @@ export default function Sales() {
         action={
           <div className="flex items-center gap-2">
             <ExportButton onClick={handleExport} disabled={!rows.length} />
-            <button onClick={() => { setError(''); setModal(true) }} className="btn-primary flex items-center gap-2"><Plus size={15}/>New Sale</button>
+            <button onClick={openAdd} className="btn-primary flex items-center gap-2"><Plus size={15}/>New Sale</button>
           </div>
         }
       />
@@ -144,7 +208,7 @@ export default function Sales() {
       </div>
 
       {/* New Sale Modal */}
-      <Modal open={modal} onClose={() => setModal(false)} title="New Sale" size="xl">
+      <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Sale' : 'New Sale'} size="xl">
         <form onSubmit={submit} className="space-y-5">
           {error && <div className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-red-400 text-sm">{error}</div>}
 
@@ -171,7 +235,8 @@ export default function Sales() {
             </FormField>
           </div>
 
-          {/* Line Items */}
+          {/* Line Items — only for new sales */}
+          {!editing && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <label className="label mb-0">Items</label>
@@ -218,6 +283,12 @@ export default function Sales() {
               ))}
             </div>
           </div>
+          )}
+
+          {/* Notes */}
+          <FormField label="Notes">
+            <input className="input" value={form.notes} onChange={e => setForm(p=>({...p,notes:e.target.value}))} placeholder="Optional notes..." />
+          </FormField>
 
           {/* Additional Fees */}
           <div className="grid grid-cols-2 gap-4">
@@ -231,6 +302,7 @@ export default function Sales() {
             </FormField>
           </div>
 
+          {!editing && (
           <div className="py-3 border-t border-dark-600 space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="text-grain-500">Subtotal</span>
@@ -253,10 +325,11 @@ export default function Sales() {
               <span className="font-display text-xl text-earth-300">{fmt.currency(total)}</span>
             </div>
           </div>
+          )}
 
           <div className="flex gap-3">
             <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? 'Saving...' : 'Create Sale'}
+              {saving ? 'Saving...' : editing ? 'Update Sale' : 'Create Sale'}
             </button>
             <button type="button" onClick={() => setModal(false)} className="btn-secondary">Cancel</button>
           </div>

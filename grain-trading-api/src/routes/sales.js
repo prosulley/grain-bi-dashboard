@@ -103,6 +103,73 @@ router.post('/', protect, async (req, res, next) => {
   }
 });
 
+// ─── PUT /api/sales/:id ────────────────────────────────────────────────────────
+router.put('/:id', protect, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { buyer_id, warehouse_id, sale_date, delivery_date, notes, tt_fee, misc_fee } = req.body;
+    const saleId = req.params.id;
+
+    const existing = await client.query('SELECT * FROM sales WHERE id = $1', [saleId]);
+    if (!existing.rows[0])
+      return res.status(404).json({ success: false, message: 'Sale not found.' });
+
+    await client.query(
+      `UPDATE sales SET
+         buyer_id      = COALESCE($1, buyer_id),
+         warehouse_id  = COALESCE($2, warehouse_id),
+         sale_date     = COALESCE($3, sale_date),
+         delivery_date = $4,
+         notes         = $5,
+         tt_fee        = COALESCE($6, tt_fee),
+         misc_fee      = COALESCE($7, misc_fee),
+         updated_at    = NOW()
+       WHERE id = $8`,
+      [buyer_id, warehouse_id, sale_date || null, delivery_date || null, notes || null,
+       tt_fee || 0, misc_fee || 0, saleId]
+    );
+
+    await client.query('COMMIT');
+    const full = await pool.query('SELECT * FROM vw_sales_summary WHERE id = $1', [saleId]);
+    res.json({ success: true, data: full.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── DELETE /api/sales/:id ────────────────────────────────────────────────────
+router.delete('/:id', protect, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const saleId = req.params.id;
+
+    const existing = await client.query('SELECT * FROM sales WHERE id = $1', [saleId]);
+    if (!existing.rows[0])
+      return res.status(404).json({ success: false, message: 'Sale not found.' });
+
+    // Delete associated payments
+    await client.query("DELETE FROM payments WHERE transaction_id = $1 AND direction = 'inflow'", [saleId]);
+    // Delete sale items
+    await client.query('DELETE FROM sale_items WHERE sale_id = $1', [saleId]);
+    // Delete the sale
+    await client.query('DELETE FROM sales WHERE id = $1', [saleId]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Sale deleted.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // ─── PUT /api/sales/:id/status ────────────────────────────────────────────────
 router.put('/:id/status', protect, async (req, res, next) => {
   try {

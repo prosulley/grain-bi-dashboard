@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, Plus, Search, Phone, MapPin } from 'lucide-react'
+import { Users, Plus, Search, Phone, MapPin, Trash2 } from 'lucide-react'
 import api from '../utils/api'
 import { PageHeader, Table, Modal, FormField, EmptyState, ExportButton } from '../components/ui'
 import { fmt } from '../utils/format'
@@ -45,6 +45,16 @@ export default function Buyers() {
 
   const f = v => setForm(p => ({ ...p, ...v }))
 
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Are you sure you want to delete buyer "${row.full_name}"?`)) return
+    try {
+      await api.delete(`/buyers/${row.id}`)
+      load(search)
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete buyer')
+    }
+  }
+
   const columns = [
     { key: 'code',         label: 'Code',   className: 'w-24' },
     { key: 'full_name',    label: 'Name',   render: (v, r) => (
@@ -64,7 +74,12 @@ export default function Buyers() {
       <span className={Number(v) > 0 ? 'text-red-400' : 'text-grain-400'}>{fmt.currency(v)}</span>
     )},
     { key: 'id', label: '', render: (_, r) => (
-      <button onClick={() => openEdit(r)} className="btn-ghost text-xs">Edit</button>
+      <div className="flex items-center gap-1">
+        <button onClick={() => openEdit(r)} className="btn-ghost text-xs">Edit</button>
+        <button onClick={() => handleDelete(r)} className="btn-ghost text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+          <Trash2 size={12}/>Delete
+        </button>
+      </div>
     )},
   ]
 
